@@ -16,7 +16,7 @@ namespace CPULoadService
             ServiceBase[] ServicesToRun;
             ServicesToRun = new ServiceBase[] 
             { 
-                new Service1() 
+                new CPULoadService() 
             };
             ServiceBase.Run(ServicesToRun);
         }
