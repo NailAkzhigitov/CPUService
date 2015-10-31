@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             this.serviceProcessInstaller1 = new System.ServiceProcess.ServiceProcessInstaller();
-            this.serviceInstaller1 = new System.ServiceProcess.ServiceInstaller();
+            this.ServiceName1 = new System.ServiceProcess.ServiceInstaller();
             // 
             // serviceProcessInstaller1
             // 
@@ -38,23 +38,23 @@
             this.serviceProcessInstaller1.Username = null;
             this.serviceProcessInstaller1.AfterInstall += new System.Configuration.Install.InstallEventHandler(this.serviceProcessInstaller1_AfterInstall);
             // 
-            // serviceInstaller1
+            // ServiceName1
             // 
-            this.serviceInstaller1.Description = "Служба сбора статистики по загрузке процессора";
-            this.serviceInstaller1.DisplayName = "Служба сбора статистики загрузки";
-            this.serviceInstaller1.ServiceName = "CPULoadService";
+            this.ServiceName1.Description = "Служба сбора статистики по загрузке процессора";
+            this.ServiceName1.DisplayName = "Служба сбора статистики загрузки";
+            this.ServiceName1.ServiceName = "CPULoadService";
             // 
             // ProjectInstaller
             // 
             this.Installers.AddRange(new System.Configuration.Install.Installer[] {
             this.serviceProcessInstaller1,
-            this.serviceInstaller1});
+            this.ServiceName1});
 
         }
 
         #endregion
 
         private System.ServiceProcess.ServiceProcessInstaller serviceProcessInstaller1;
-        private System.ServiceProcess.ServiceInstaller serviceInstaller1;
+        private System.ServiceProcess.ServiceInstaller ServiceName1;
     }
 }
