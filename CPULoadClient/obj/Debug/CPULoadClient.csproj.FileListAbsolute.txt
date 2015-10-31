@@ -1,0 +1,7 @@
+D:\Dev\SPO\CPULoad\CPULoadClient\bin\Debug\CPULoadClient.exe
+D:\Dev\SPO\CPULoad\CPULoadClient\bin\Debug\CPULoadClient.pdb
+D:\Dev\SPO\CPULoad\CPULoadClient\obj\Debug\CPULoadClient.Form1.resources
+D:\Dev\SPO\CPULoad\CPULoadClient\obj\Debug\CPULoadClient.Properties.Resources.resources
+D:\Dev\SPO\CPULoad\CPULoadClient\obj\Debug\CPULoadClient.csproj.GenerateResource.Cache
+D:\Dev\SPO\CPULoad\CPULoadClient\obj\Debug\CPULoadClient.exe
+D:\Dev\SPO\CPULoad\CPULoadClient\obj\Debug\CPULoadClient.pdb
