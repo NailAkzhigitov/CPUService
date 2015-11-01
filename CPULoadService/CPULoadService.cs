@@ -1,5 +1,9 @@
-﻿using System;
+﻿//
+// Служба получения списка запущенных процессов и записи данные в БД
+//
+using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlServerCe;
 using System.Diagnostics;
@@ -14,7 +18,6 @@ namespace CPULoadService
 {
     public partial class CPULoadService : ServiceBase
     {
-
         // Путь к папке с программой
         private string ServicePath;
         private Thread listenerThread;  // поток для работы с клиентами
@@ -22,14 +25,12 @@ namespace CPULoadService
         private TcpListener listener;   // слушатель порта
         private int port;               // порт для прослушки
         TcpClient client;
-        private bool IsExit;
-        double CpuUsagePercent;
-        // класс для настроек 
-        //public WatchSattings WS;
-        //private DateTime lastExceeds; // время последнего превышения порога
-
-        string connString;
-        
+        private bool IsExit;            // флаг выхода 
+        string connString;              // строка подключения к БД
+        ProccessList procList;          // 
+        /// <summary>
+        /// Конструктор
+        /// </summary>
         public CPULoadService()
         {
             InitializeComponent();
@@ -43,10 +44,12 @@ namespace CPULoadService
                 this.eventLog1 = new System.Diagnostics.EventLog();
                 this.eventLog1.Source = this.ServiceName;
                 this.eventLog1.Log = "Application";
-                // иниц класс настроек
-                //WS = new WatchSattings();
-                // порт
-                //port = WS.ServicePort;
+                // читаем номер порта для запуска сокета  
+                try
+                {
+                    port = Convert.ToInt32(ConfigurationManager.AppSettings["CPULoadServicePort"]);
+                }
+                catch { port = 3125; }
                 // поток для приема сообщений от пользователей
                 listenerThread = new Thread(ListenerThread);
                 listenerThread.IsBackground = true;
@@ -56,10 +59,9 @@ namespace CPULoadService
                 workThread = new Thread(WorkThread);
                 workThread.IsBackground = true;
                 workThread.Name = "WorkThread";
-                // время последнего превышения порога - время запуска службы
-                //lastExceeds = DateTime.Now;
-
+                // флаг завершения работы
                 IsExit = false;
+                procList = new ProccessList();
             }
             catch (Exception ex)
             {
@@ -100,7 +102,7 @@ namespace CPULoadService
             try
             {
                 IPAddress ipAddress = IPAddress.Any;
-                listener = new TcpListener(ipAddress, 3124);
+                listener = new TcpListener(ipAddress, port);
                 // запуск потока для прослушивания подключений клиентов
                 listener.Start();
                 while (true)
@@ -124,121 +126,76 @@ namespace CPULoadService
             WriteDataToLog("Подключился клиент!");
             StreamReader strR = new StreamReader(client.GetStream());
             NetworkStream strW = client.GetStream();
-            string prihod = "prihod";
+            string request = String.Empty;
             int command = 0;
             byte[] dataWrite;
             try
             {
                 // получаем сообщение
-                prihod = strR.ReadLine();
-                WriteDataToLog("Пришла команда " + prihod);
+                request = strR.ReadLine();
+                WriteDataToLog("Пришла команда " + request);
             }
             catch { }
             // если размер > 3
-            if (prihod.Length == 3)
+            if (request.Length == 3)
             {
                 try
                 {
-                    command = Convert.ToInt32(prihod);
+                    command = Convert.ToInt32(request);
                 }
                 catch { }
-                // разбираем команду
-                switch (command)
+                if (command == 200)
                 {
-                    // получить настройки
-                    case 100:
-                        //WriteDataToLog("Пришла команда 100");
-                        // посылаем ответ
-                        /*string sendSettings = "100#";
-                        sendSettings += WS.LoadLevel.ToString() + "#";
-                        sendSettings += WS.WatchInterval.ToString() + "#";
-                        sendSettings += WS.ApplicationWorkTime.ToString() + "#";
-                        sendSettings += WS.ApplicationPath.ToString() + "#";
-                        sendSettings += WS.IsActive.ToString() + "#";*/
-                        //dataWrite = Encoding.UTF8.GetBytes(sendSettings + "\r\n");
-                        //strW.Write(dataWrite, 0, dataWrite.Length);
-                        //WriteDataToLog("Клиенту отправлен ответ " + sendSettings);
-                        break;
-                    // установить настройки
-                    case 200:
-                        //WriteDataToLog("Пришла команда 200");
-                        string commText = strR.ReadLine();
-                        if (commText.Length > 0)
+                    string commText = strR.ReadLine();
+                    if (commText.Length > 0)
+                    {
+                        WriteDataToLog(commText);
+                        string[] paramsList = commText.Split('#');
+                        if (paramsList.Length > 0)
                         {
-                            WriteDataToLog(commText);
-                            string[] paramsList = commText.Split('#');
-                            if (paramsList.Length > 0)
+                            try
                             {
-                        //        // Проверяем, существует ли файл
-                        //        if (File.Exists(paramsList[3]))
-                        //        {
-                        //            WS.LoadLevel = Convert.ToInt32(paramsList[0]);
-                        //            WS.WatchInterval = Convert.ToInt32(paramsList[1]);
-                        //            WS.ApplicationWorkTime = Convert.ToInt32(paramsList[2]);
-                        //            WS.ApplicationPath = paramsList[3];
-                        //            WS.IsActive = paramsList[4];
-                        //            WS.SaveSettings();
-                        //            // отправим ответ, что настройки сохранены
-                        //            dataWrite = Encoding.UTF8.GetBytes("200" + "\r\n");
-                        //            strW.Write(dataWrite, 0, dataWrite.Length);
-                        //        }
-                        //        else
-                        //        {
-                        //            // отправим ответ, что файл не найден
-                        //            dataWrite = Encoding.UTF8.GetBytes("404" + "\r\n");
-                        //            strW.Write(dataWrite, 0, dataWrite.Length);
-                        //        }
-                                try
+                                DateTime dt1, dt2;
+                                dt1 = DateTime.Parse(paramsList[0]);
+                                dt2 = DateTime.Parse(paramsList[1]);
+                                DataTable dt = new DataTable();
+                                using (SqlCeConnection sqlConn = new SqlCeConnection(connString))
                                 {
-                                    DateTime dt1, dt2;
-                                    dt1 = DateTime.Parse(paramsList[0]);
-                                    dt2 = DateTime.Parse(paramsList[1]);
-                                    DataTable dt = new DataTable();
-                                    using (SqlCeConnection sqlConn = new SqlCeConnection(connString))
-                                    {
-                                        SqlCeCommand sqlComm = new SqlCeCommand();
-                                        SqlCeDataAdapter da = new SqlCeDataAdapter();
-                                        
-                                        sqlComm.CommandText = "select ProccessId, ProccessName, Round(AVG(ProccessPercent),2) AS Expr1 FROM CPULoadData where RecordDate between @dt1 and @dt2  GROUP BY ProccessId, ProccessName ORDER BY Expr1 DESC ";
-                                        sqlComm.Parameters.AddWithValue("@dt1", dt1);
-                                        sqlComm.Parameters.AddWithValue("@dt2", dt2);
-                                        sqlComm.Connection = sqlConn;
-                                        sqlComm.CommandType = CommandType.Text;
-                                        if (sqlConn.State == ConnectionState.Closed)
-                                            sqlConn.Open();
-                                        da.SelectCommand = sqlComm;
-                                        //sqlComm.ExecuteNonQuery();
-                                        da.Fill(dt);
-                                        sqlConn.Close();
-                                    }
-                                    int i=0;
-                                    string answer = "ans#";
-                                    foreach (DataRow dr in dt.Rows)
-                                    {
-                                        answer += dr["ProccessId"].ToString() + ";" + dr["ProccessName"].ToString() + ";" + dr["Expr1"].ToString() + "#";
-                                        i++;
-                                        if (i == 10)
-                                            break;
-                                    }
-                                    dataWrite = Encoding.UTF8.GetBytes(answer + "\r\n");
-                                    strW.Write(dataWrite, 0, dataWrite.Length);
-                                    WriteDataToLog("Клиенту отправлен ответ " + answer);
+                                    SqlCeCommand sqlComm = new SqlCeCommand();
+                                    SqlCeDataAdapter da = new SqlCeDataAdapter();
+
+                                    sqlComm.CommandText = "select ProccessId, ProccessName, Round(AVG(ProccessPercent),2) AS Expr1 ";
+                                    sqlComm.CommandText += "FROM CPULoadData where RecordDate between @dt1 and @dt2 ";
+                                    sqlComm.CommandText += "GROUP BY ProccessId, ProccessName ORDER BY Expr1 DESC ";
+                                    sqlComm.Parameters.AddWithValue("@dt1", dt1);
+                                    sqlComm.Parameters.AddWithValue("@dt2", dt2);
+                                    sqlComm.Connection = sqlConn;
+                                    sqlComm.CommandType = CommandType.Text;
+                                    if (sqlConn.State == ConnectionState.Closed)
+                                        sqlConn.Open();
+                                    da.SelectCommand = sqlComm;
+                                    da.Fill(dt);
+                                    sqlConn.Close();
                                 }
-                                catch { }
+                                int i = 0;
+                                // формируем ответ
+                                string answer = "ans#";
+                                foreach (DataRow dr in dt.Rows)
+                                {
+                                    answer += dr["ProccessId"].ToString() + ";" + dr["ProccessName"].ToString() + ";" + dr["Expr1"].ToString() + "#";
+                                    i++;
+                                    if (i == 10)
+                                        break;
+                                }
+                                // отправка ответа
+                                dataWrite = Encoding.UTF8.GetBytes(answer + "\r\n");
+                                strW.Write(dataWrite, 0, dataWrite.Length);
+                                // запись в лог
+                                WriteDataToLog("Клиенту отправлен ответ " + answer);
                             }
+                            catch (Exception ex) { WriteDataToLog("Ошибка отправки данных " + ex.Message); }
                         }
-                        break;
-                    // получить состояние сервера
-                    case 300:
-                        //WriteDataToLog("Пришла команда 300");
-                        //// посылаем ответ
-                        //string sendSettings300 = "";
-                        //sendSettings300 += WS.AppStatus + "; Время запуска";
-                        //sendSettings300 += WS.AppStartTime.ToString("dd.MM.yyyy HH:mm:ss") + ";";
-                        //dataWrite = Encoding.UTF8.GetBytes(sendSettings300 + "\r\n");
-                        //strW.Write(dataWrite, 0, dataWrite.Length);
-                        //WriteDataToLog("Клиенту отправлен ответ " + sendSettings300);
-                        break;
+                    }
                 }
             }
             strR.Close();
@@ -246,14 +203,15 @@ namespace CPULoadService
 
         }
         /// <summary>
-        /// Поток для индексации файлов
+        /// Поток для проверки процессов
         /// </summary>
         protected void WorkThread()
         {
-            WriteDataToLog("Старт проверки процессов");
+            WriteDataToLog("Запуск потока проверки процессов");
        
             while (!IsExit)
             {
+                // получение данных и запись в базу данных
                 UpdateData();
                 // прервем поток на 1 сек
                 Thread.Sleep(1000);
@@ -261,42 +219,30 @@ namespace CPULoadService
             WriteDataToLog("Основной поток завершил работу");
         }
 
+        /// <summary>
+        /// Получение данных и запись в БД
+        /// </summary>
         private void UpdateData()
         {
-            
+            // получим список процессов
             Process[] ProcessList = Process.GetProcesses();
-            List<ProccessInfo> procList = new List<ProccessInfo>();
-            PerformanceCounter TotalCpuUsage = new PerformanceCounter("Process", "% Processor Time", "Idle");
-            double TotalCpuUsageValue =  TotalCpuUsage.NextValue();
-            var counters = new List<PerformanceCounter>();
-            double TotalTime = 0;
-            foreach (Process process in ProcessList)
-            {
-                if (process.Id == 0) continue;
-                try
-                {
-                    ProccessInfo pi = new ProccessInfo();
-                    pi.ProccessId = process.Id;
-                    pi.ProccessName = process.ProcessName;
-                    pi.CPUUsage = (long)process.TotalProcessorTime.TotalMilliseconds ;
-                    procList.Add(pi);
-                    TotalTime += process.TotalProcessorTime.TotalMilliseconds;
-                }
-                catch { }
-                CpuUsagePercent = TotalTime / (100 - TotalCpuUsageValue);
-            }
+           
+            // запись в БД
             using (SqlCeConnection sqlConn = new SqlCeConnection(connString))
             {
-                foreach (var proc in procList)
+                // для каждого процесса в списке
+                foreach (Process process in ProcessList)
                 {
+                    if (process.Id == 0) continue; // игнорируем процесс бездействие системы
                     try
                     {
+                        // запишем в БД данные
                         SqlCeCommand sqlComm = new SqlCeCommand();
                         sqlComm.CommandText = "insert into CPULoadData(ProccessId, ProccessName, ProccessPercent) ";
                         sqlComm.CommandText += " values (@pid, @pname, @pperc); ";
-                        sqlComm.Parameters.AddWithValue("@pid", proc.ProccessId);
-                        sqlComm.Parameters.AddWithValue("@pname", proc.ProccessName);
-                        sqlComm.Parameters.AddWithValue("@pperc", proc.CPUUsage / CpuUsagePercent);
+                        sqlComm.Parameters.AddWithValue("@pid", process.Id);
+                        sqlComm.Parameters.AddWithValue("@pname", process.ProcessName);
+                        sqlComm.Parameters.AddWithValue("@pperc", procList.CheckProcess(process));
                         sqlComm.Connection = sqlConn;
                         sqlComm.CommandType = CommandType.Text;
                         if (sqlConn.State == ConnectionState.Closed)
@@ -309,12 +255,49 @@ namespace CPULoadService
             }
         }
     }
-
-    class ProccessInfo
+  
+    /// <summary>
+    /// Список процессов
+    /// </summary>
+    class ProccessList
     {
-        public int ProccessId { set; get; }
-        public string ProccessName { set; get; }
-        public double ProccessPerc { set; get; }
-        public long CPUUsage;
+        // список процессов
+        List<ProccessCounter> perfList = new List<ProccessCounter>();
+        /// <summary>
+        /// Проверка процесса
+        /// </summary>
+        /// <param name="process"></param>
+        /// <returns></returns>
+        public double CheckProcess(Process process)
+        {
+            bool IsExists = false;
+            // проверяем по всему списку
+            foreach (ProccessCounter pc in perfList)
+            {
+                // если нашли процесс, возвращаем счетчик
+                if (pc.process.ProcessName == process.ProcessName)
+                {
+                    IsExists = true;
+                    return pc.perfCounter.NextValue() / Environment.ProcessorCount;
+                }
+            }
+            // если не нашли, добавим в список
+            if (!IsExists)
+            {
+                ProccessCounter tmpProc = new ProccessCounter();
+                tmpProc.process = process;
+                tmpProc.perfCounter = new PerformanceCounter("Process", "% Processor Time", process.ProcessName, true);
+                perfList.Add(tmpProc);
+            }
+            return 0;
+        }
+    }
+    /// <summary>
+    /// Данные процесса
+    /// </summary>
+    class ProccessCounter
+    {
+        public Process process;
+        public PerformanceCounter perfCounter;
     }
 }
